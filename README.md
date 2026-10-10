@@ -13,10 +13,14 @@
 ## ARLinux ARM64 fork
 
 This fork starts from **GE-Proton11-7**, retaining GE's Wine, FEX and graphics
-components. Its Android patch maps executable PE sections with execute
+components. Its Android integration maps executable PE sections with execute
 permission before relocation writes, avoiding SELinux `execmod` denials.
 It does not disable SELinux or replace Steam's compatibility selection.
-The patch is in `patches/arlinux/` and is applied during Wine preparation.
+Network enumeration failures are handled without dereferencing a null interface
+list or treating an empty adapter table as an allocated adapter. Android may
+deny routing-netlink access even when ordinary network connections work; these
+fixes do not fabricate interfaces or relax the host's permissions.
+The patches are in `patches/arlinux/` and are applied during Wine preparation.
 All upstream licenses, notices and attribution are retained.
 
 ARLinux releases include the ARM64 runtime archive, SHA-256 checksums and the
@@ -28,7 +32,8 @@ alternative to umu. See the original standalone-runtime warning below.
 The lightweight build uses `tools/build/proton-ge.sh` in
 [arlinux-rootfs](https://github.com/taowen/arlinux-rootfs), a matching
 upstream-prepared GE checkout, the pinned official ARM64 archive and LLVM-MinGW.
-It rebuilds ntdll and wineserver together, retaining the rest of the GE runtime,
+It rebuilds ntdll, wineserver, nsiproxy and the matching iphlpapi PE modules,
+retaining the rest of the GE runtime,
 and emits the exact modified Wine source archive. The full upstream build
 instructions remain applicable.
 

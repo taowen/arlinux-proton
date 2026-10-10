@@ -1,0 +1,25 @@
+diff --git a/dlls/nsiproxy.sys/ndis.c b/dlls/nsiproxy.sys/ndis.c
+--- a/dlls/nsiproxy.sys/ndis.c
++++ b/dlls/nsiproxy.sys/ndis.c
+@@ -68,5 +68,6 @@
+ 
+ #include <pthread.h>
++#include <errno.h>
+ 
+ #include "ntstatus.h"
+ #define WIN32_NO_STATUS
+@@ -334,6 +335,14 @@ static unsigned int update_if_table( void )
+     unsigned int append_count = 0;
+     struct if_entry *if_entry;
+ 
++    /* Enumeration can fail when the host denies NETLINK_ROUTE access.
++     * Do not fault while holding if_list_lock; retain the cached table. */
++    if (!indices)
++    {
++        WARN( "Failed to enumerate interfaces, errno %d.\n", errno );
++        return 0;
++    }
++
+     for (entry = indices; entry->if_index; entry++)
+     {
+         if (!find_entry_from_index( entry->if_index ) && add_entry( entry->if_index, entry->if_name ))
