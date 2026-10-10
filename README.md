@@ -32,7 +32,8 @@ alternative to umu. See the original standalone-runtime warning below.
 The lightweight build uses `tools/build/proton-ge.sh` in
 [arlinux-rootfs](https://github.com/taowen/arlinux-rootfs), a matching
 upstream-prepared GE checkout, the pinned official ARM64 archive and LLVM-MinGW.
-It rebuilds ntdll, wineserver, nsiproxy and the matching iphlpapi PE modules,
+It rebuilds ntdll, wineserver, nsiproxy, the matching iphlpapi PE modules
+and the WoW64 kernelbase module,
 retaining the rest of the GE runtime,
 and emits the exact modified Wine source archive. The full upstream build
 instructions remain applicable.
@@ -44,6 +45,11 @@ files and source revision. DXVK initialization remains GPU-backed; no device
 features are fabricated and no software-rendering browser flags are injected.
 This does not change Steam's separately managed compatibility tools.
 The DXVK build requires LLVM-MinGW with ARM64X support (LLVM 23 or newer).
+GE's existing WebView2 sandbox compatibility entry also covers 32-bit hosts
+launching the 64-bit browser through WoW64. Chromium cannot install its Windows
+interception thunks into ARM64X Wine builtins. This Windows browser sandbox is
+not provided; Android's application sandbox remains in effect. GPU acceleration
+is not disabled and users do not need browser arguments or registry settings.
 
 > [!Warning]
 > **Running non-Steam games with GE-Proton outside of Steam is only supported using [umu](https://github.com/Open-Wine-Components/umu-launcher):**
