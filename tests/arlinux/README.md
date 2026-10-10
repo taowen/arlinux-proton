@@ -21,3 +21,8 @@ Build it with LLVM-MinGW against the prepared Wine headers and run it through
 the normal launcher in ARM64, x86-64 and x86 prefixes. It returns zero on
 success and writes `C:\dxcore-properties-result.txt`. Memory values come from
 Wine's existing adapter inventory; unimplemented properties remain unsupported.
+
+`ucrt-locale.c` loads UCRT dynamically and checks locale names with UTF-8 or
+numeric code-page suffixes, multibyte/wide-character round trips and invalid
+locale rejection. Run ARM64, x86-64 and x86 builds in an existing prefix.
+It returns zero on success and writes `C:\ucrt-locale-result.txt`.

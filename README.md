@@ -33,7 +33,7 @@ The lightweight build uses `tools/build/proton-ge.sh` in
 [arlinux-rootfs](https://github.com/taowen/arlinux-rootfs), a matching
 upstream-prepared GE checkout, the pinned official ARM64 archive and LLVM-MinGW.
 It rebuilds ntdll, wineserver, nsiproxy, the matching iphlpapi PE modules
-and the ntdll, kernel32, kernelbase, windows.ui, netprofm and dxcore PE modules
+and the ntdll, kernel32, kernelbase, windows.ui, netprofm, dxcore and ucrtbase PE modules
 for all three architectures,
 retaining the rest of the GE runtime,
 and emits the exact modified Wine source archive. The full upstream build
@@ -70,6 +70,9 @@ that static inventory as non-detachable. Property support reporting uses the
 same implementation as property-size queries; other unimplemented properties
 remain unsupported. This allows clients such as Intel LibXPUInfo to query the
 adapter without throwing on missing memory-property implementations.
+UCRT accepts locale names with code-page suffixes, such as `en-US.UTF-8`,
+using its existing locale and encoding implementations. Older Microsoft CRT
+versions retain their existing parsing rules; invalid locales still fail.
 
 > [!Warning]
 > **Running non-Steam games with GE-Proton outside of Steam is only supported using [umu](https://github.com/Open-Wine-Components/umu-launcher):**
