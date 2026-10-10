@@ -30,6 +30,7 @@ apply_all_in_dir() {
     apply_patch "../patches/dxvk/dxgi-keep-fullscreen-on-focus-loss.patch"
     # Black Desert also needs the matching Wine activation compatibility patch below.
     apply_patch "../patches/dxvk/black-desert-keep-fullscreen-on-focus-loss.patch"
+    apply_patch "../patches/dxvk/dxvk-singleton-exception-safety.patch"
     popd
 
     pushd vkd3d-proton

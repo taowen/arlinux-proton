@@ -1,0 +1,26 @@
+From: ARLinux contributors
+Subject: [PATCH] util: do not count failed singleton construction as an acquire
+
+DxvkInstance construction can throw when no Vulkan adapter supports the
+required features. Chromium retries CreateDXGIFactory in the same process.
+Incrementing the use count before construction leaves a null singleton with
+a nonzero count, so the next factory dereferences a null instance instead of
+returning the original initialization failure.
+
+Only count successful acquisitions. No adapter features are fabricated.
+
+diff --git a/src/util/util_singleton.h b/src/util/util_singleton.h
+--- a/src/util/util_singleton.h
++++ b/src/util/util_singleton.h
+@@ -20,9 +20,10 @@ public:
+   Rc<T> acquire(Args... constantArgs) {
+     std::lock_guard lock(m_mutex);
+ 
+-    if (!(m_useCount++))
++    if (!m_useCount)
+       m_object = new T(constantArgs...);
+ 
++    ++m_useCount;
+     return m_object;
+   }
+ 

@@ -1,0 +1,19 @@
+From: ARLinux contributors
+Subject: [PATCH] dxvk: explicitly construct the null fragment pipeline key
+
+Use the same key construction as other pipeline library insertions. This
+also avoids libc++ 23's invalid tuple_element<0, tuple<>> instantiation
+when emplacing a default-constructed key with an empty tuple.
+
+diff --git a/src/dxvk/dxvk_pipemanager.cpp b/src/dxvk/dxvk_pipemanager.cpp
+--- a/src/dxvk/dxvk_pipemanager.cpp
++++ b/src/dxvk/dxvk_pipemanager.cpp
+@@ -394,7 +394,7 @@
+ 
+     auto iter = m_shaderLibraries.emplace(
+       std::piecewise_construct,
+-      std::tuple(),
++      std::tuple(key),
+       std::tuple(m_device, this, key));
+     return &iter.first->second;
+   }

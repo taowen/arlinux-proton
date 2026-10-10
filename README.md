@@ -37,6 +37,14 @@ retaining the rest of the GE runtime,
 and emits the exact modified Wine source archive. The full upstream build
 instructions remain applicable.
 
+The standalone Windows-app bundle rebuilds DXVK 2.7.1 for ARM64X, x64 and x86.
+This is its common Vulkan 1.3 baseline: DXVK 3.x's mandatory 8-bit storage feature
+is unavailable on Adreno 6xx. The bundle includes DXVK's exact source, patch
+files and source revision. DXVK initialization remains GPU-backed; no device
+features are fabricated and no software-rendering browser flags are injected.
+This does not change Steam's separately managed compatibility tools.
+The DXVK build requires LLVM-MinGW with ARM64X support (LLVM 23 or newer).
+
 > [!Warning]
 > **Running non-Steam games with GE-Proton outside of Steam is only supported using [umu](https://github.com/Open-Wine-Components/umu-launcher):**
 > 
