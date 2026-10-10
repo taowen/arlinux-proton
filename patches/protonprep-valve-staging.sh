@@ -467,6 +467,9 @@ apply_all_in_dir() {
         apply_patch "$patch"
     done
 
+    echo "WINE: Android executable image mapping"
+    apply_all_in_dir "../patches/arlinux/"
+
     echo "WINE: RUN AUTOCONF TOOLS/MAKE_REQUESTS"
     autoreconf -f
     ./tools/make_requests

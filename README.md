@@ -10,6 +10,28 @@
 
 # GE-Proton
 
+## ARLinux ARM64 fork
+
+This fork starts from **GE-Proton11-7**, retaining GE's Wine, FEX and graphics
+components. Its Android patch maps executable PE sections with execute
+permission before relocation writes, avoiding SELinux `execmod` denials.
+It does not disable SELinux or replace Steam's compatibility selection.
+The patch is in `patches/arlinux/` and is applied during Wine preparation.
+All upstream licenses, notices and attribution are retained.
+
+ARLinux releases include the ARM64 runtime archive, SHA-256 checksums and the
+exact modified Wine source archive. `arlinux-windows` installs the runtime on
+demand and uses private application prefixes, separate from Steam game data.
+This direct-launch integration is experimental and is not an upstream-supported
+alternative to umu. See the original standalone-runtime warning below.
+
+The lightweight build uses `tools/build/proton-ge.sh` in
+[arlinux-rootfs](https://github.com/taowen/arlinux-rootfs), a matching
+upstream-prepared GE checkout, the pinned official ARM64 archive and LLVM-MinGW.
+It rebuilds ntdll and wineserver together, retaining the rest of the GE runtime,
+and emits the exact modified Wine source archive. The full upstream build
+instructions remain applicable.
+
 > [!Warning]
 > **Running non-Steam games with GE-Proton outside of Steam is only supported using [umu](https://github.com/Open-Wine-Components/umu-launcher):**
 > 
