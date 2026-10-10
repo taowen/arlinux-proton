@@ -33,7 +33,7 @@ The lightweight build uses `tools/build/proton-ge.sh` in
 [arlinux-rootfs](https://github.com/taowen/arlinux-rootfs), a matching
 upstream-prepared GE checkout, the pinned official ARM64 archive and LLVM-MinGW.
 It rebuilds ntdll, wineserver, nsiproxy, the matching iphlpapi PE modules
-and the WoW64 kernelbase module,
+and the ntdll, kernel32, kernelbase and windows.ui PE modules for all three architectures,
 retaining the rest of the GE runtime,
 and emits the exact modified Wine source archive. The full upstream build
 instructions remain applicable.
@@ -50,6 +50,13 @@ launching the 64-bit browser through WoW64. Chromium cannot install its Windows
 interception thunks into ARM64X Wine builtins. This Windows browser sandbox is
 not provided; Android's application sandbox remains in effect. GPU acceleration
 is not disabled and users do not need browser arguments or registry settings.
+The Wine threadpool implementation also exports `SetThreadpoolTimerEx`, sharing
+the existing timer queue and reporting cancellation under its locks. This is
+required by Creative Cloud Helper after authentication; it is not a no-op stub.
+The WinRT toast manager exposes an empty notification history that can safely
+be cleared. Toast creation and delivery remain explicitly unimplemented;
+this avoids a notification initialization crash without pretending to deliver
+system notifications.
 
 > [!Warning]
 > **Running non-Steam games with GE-Proton outside of Steam is only supported using [umu](https://github.com/Open-Wine-Components/umu-launcher):**

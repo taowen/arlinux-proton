@@ -1,0 +1,63 @@
+From: ARLinux contributors
+Subject: [PATCH] threadpool: implement SetThreadpoolTimerEx
+
+Reuse the existing timer queue and return whether the previous pending
+timer was canceled, under the same queue lock. Keep SetThreadpoolTimer
+as a void wrapper so both APIs share scheduling and cancellation logic.
+Creative Cloud Helper uses the extended API after signing in.
+
+diff --git a/dlls/ntdll/threadpool.c b/dlls/ntdll/threadpool.c
+--- a/dlls/ntdll/threadpool.c
++++ b/dlls/ntdll/threadpool.c
+@@ -2996,6 +2996,7 @@
+-VOID WINAPI TpSetTimer( TP_TIMER *timer, LARGE_INTEGER *timeout, LONG period, LONG window_length )
++BOOL WINAPI TpSetTimerEx( TP_TIMER *timer, LARGE_INTEGER *timeout, LONG period, LONG window_length )
+ {
+     struct threadpool_object *this = impl_from_TP_TIMER( timer );
+     struct threadpool_object *other_timer;
+     BOOL submit_timer = FALSE;
++    BOOL canceled;
+     ULONGLONG timestamp;
+@@ -3007,4 +3008,8 @@
+     RtlEnterCriticalSection( &timerqueue.cs );
+ 
+     assert( this->u.timer.timer_initialized );
++    RtlEnterCriticalSection( &this->pool->cs );
++    canceled = this->u.timer.timer_pending && !this->num_pending_callbacks &&
++               !this->num_running_callbacks;
++    RtlLeaveCriticalSection( &this->pool->cs );
+     this->u.timer.timer_set = timeout != NULL;
+@@ -3067,6 +3072,12 @@
+ 
+     if (submit_timer)
+        tp_object_submit( this, FALSE );
++    return canceled;
++}
++
++VOID WINAPI TpSetTimer( TP_TIMER *timer, LARGE_INTEGER *timeout, LONG period, LONG window_length )
++{
++    TpSetTimerEx( timer, timeout, period, window_length );
+ }
+ 
+ /***********************************************************************
+diff --git a/dlls/ntdll/ntdll.spec b/dlls/ntdll/ntdll.spec
+--- a/dlls/ntdll/ntdll.spec
++++ b/dlls/ntdll/ntdll.spec
+@@ -1192,2 +1192,3 @@
+ @ stdcall TpSetTimer(ptr ptr long long)
++@ stdcall TpSetTimerEx(ptr ptr long long)
+ @ stdcall TpSetWait(ptr long ptr)
+diff --git a/dlls/kernelbase/kernelbase.spec b/dlls/kernelbase/kernelbase.spec
+--- a/dlls/kernelbase/kernelbase.spec
++++ b/dlls/kernelbase/kernelbase.spec
+@@ -1549,2 +1549,2 @@
+ @ stdcall SetThreadpoolTimer(ptr ptr long long) ntdll.TpSetTimer
+-# @ stub SetThreadpoolTimerEx
++@ stdcall SetThreadpoolTimerEx(ptr ptr long long) ntdll.TpSetTimerEx
+diff --git a/dlls/kernel32/kernel32.spec b/dlls/kernel32/kernel32.spec
+--- a/dlls/kernel32/kernel32.spec
++++ b/dlls/kernel32/kernel32.spec
+@@ -1513,2 +1513,3 @@
+ @ stdcall SetThreadpoolTimer(ptr ptr long long) NTDLL.TpSetTimer
++@ stdcall SetThreadpoolTimerEx(ptr ptr long long) NTDLL.TpSetTimerEx
+ @ stdcall SetThreadpoolWait(ptr long ptr) NTDLL.TpSetWait
