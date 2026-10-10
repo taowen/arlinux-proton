@@ -57,6 +57,13 @@ The WinRT toast manager exposes an empty notification history that can safely
 be cleared. Toast creation and delivery remain explicitly unimplemented;
 this avoids a notification initialization crash without pretending to deliver
 system notifications.
+When the host denies adapter enumeration, the Network List Manager checks
+IPv4 and IPv6 socket routing without transmitting packets. This preserves
+Wine's existing route-based connectivity heuristic without inventing network
+interfaces or guaranteeing that a particular remote service is reachable.
+Short `TokenLinkedToken` queries return `ERROR_BAD_LENGTH`, matching native
+Windows. Other token information keeps its existing buffer-size semantics;
+this lets installers allocate the required linked-token buffer normally.
 
 > [!Warning]
 > **Running non-Steam games with GE-Proton outside of Steam is only supported using [umu](https://github.com/Open-Wine-Components/umu-launcher):**

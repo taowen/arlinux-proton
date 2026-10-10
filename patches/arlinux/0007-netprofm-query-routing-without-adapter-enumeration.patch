@@ -1,0 +1,120 @@
+--- a/dlls/netprofm/Makefile.in
++++ b/dlls/netprofm/Makefile.in
+@@ -1,5 +1,5 @@
+ MODULE    = netprofm.dll
+-IMPORTS   = iphlpapi
++IMPORTS   = iphlpapi ws2_32
+ 
+ EXTRADLLFLAGS = -Wb,--prefer-native
+ 
+--- a/dlls/netprofm/list.c
++++ b/dlls/netprofm/list.c
+@@ -1310,6 +1310,69 @@
+     return S_FALSE;
+ }
+ 
++/* Adapter enumeration may be denied by the host even when sockets work.
++ * Like the existing gateway test, this checks routing, not remote service
++ * availability. UDP connect selects an actual local address without sending
++ * any packets; the destinations are IETF documentation-only addresses.
++ * Do not invent adapters or report connectivity without a usable route. */
++static BOOL has_outbound_route( int family )
++{
++    static const BYTE ipv6_destination[16] = {0x20,0x01,0x0d,0xb8,0,0,0,0,0,0,0,0,0,0,0,1};
++    static const BYTE ipv6_loopback[16] = {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1};
++    SOCKADDR_STORAGE destination = {0}, local = {0};
++    int size = sizeof(local), destination_size;
++    SOCKET socket_handle;
++    BOOL result = FALSE;
++
++    if (family == AF_INET)
++    {
++        SOCKADDR_IN *addr = (SOCKADDR_IN *)&destination;
++        addr->sin_family = AF_INET;
++        addr->sin_port = htons(9);
++        addr->sin_addr.s_addr = htonl(0xc0000201);
++        destination_size = sizeof(*addr);
++    }
++    else
++    {
++        SOCKADDR_IN6 *addr = (SOCKADDR_IN6 *)&destination;
++        addr->sin6_family = AF_INET6;
++        addr->sin6_port = htons(9);
++        memcpy(&addr->sin6_addr, ipv6_destination, sizeof(ipv6_destination));
++        destination_size = sizeof(*addr);
++    }
++    if ((socket_handle = socket(family, SOCK_DGRAM, IPPROTO_UDP)) == INVALID_SOCKET) return FALSE;
++    if (!connect(socket_handle, (SOCKADDR *)&destination, destination_size) &&
++        !getsockname(socket_handle, (SOCKADDR *)&local, &size))
++    {
++        if (family == AF_INET)
++        {
++            ULONG address = ntohl(((SOCKADDR_IN *)&local)->sin_addr.s_addr);
++            result = address && (address >> 24) != 127;
++        }
++        else
++        {
++            IN6_ADDR *address = &((SOCKADDR_IN6 *)&local)->sin6_addr;
++            static const BYTE unspecified[16];
++            result = memcmp(address, unspecified, 16) && memcmp(address, ipv6_loopback, 16);
++        }
++    }
++    closesocket(socket_handle);
++    return result;
++}
++
++static NLM_CONNECTIVITY routed_connectivity( void )
++{
++    WSADATA data;
++    NLM_CONNECTIVITY result = NLM_CONNECTIVITY_DISCONNECTED;
++
++    if (WSAStartup(MAKEWORD(2,2), &data)) return result;
++    if (has_outbound_route(AF_INET)) result |= NLM_CONNECTIVITY_IPV4_INTERNET;
++    if (has_outbound_route(AF_INET6)) result |= NLM_CONNECTIVITY_IPV6_INTERNET;
++    WSACleanup();
++    TRACE("adapter enumeration unavailable, routed connectivity %#x\n", result);
++    return result;
++}
++
+ static HRESULT WINAPI list_manager_IsConnectedToInternet(
+     INetworkListManager *iface,
+     VARIANT_BOOL *pbIsConnected )
+@@ -1319,6 +1382,12 @@
+ 
+     TRACE( "%p, %p\n", iface, pbIsConnected );
+ 
++    if (list_empty(&mgr->networks))
++    {
++        *pbIsConnected = routed_connectivity() ? VARIANT_TRUE : VARIANT_FALSE;
++        return S_OK;
++    }
++
+     LIST_FOR_EACH_ENTRY( network, &mgr->networks, struct network, entry )
+     {
+         if (network->connected_to_internet)
+@@ -1341,6 +1410,12 @@
+ 
+     TRACE( "%p, %p\n", iface, pbIsConnected );
+ 
++    if (list_empty(&mgr->networks))
++    {
++        *pbIsConnected = routed_connectivity() ? VARIANT_TRUE : VARIANT_FALSE;
++        return S_OK;
++    }
++
+     LIST_FOR_EACH_ENTRY( network, &mgr->networks, struct network, entry )
+     {
+         if (network->connected)
+@@ -1365,6 +1440,12 @@
+ 
+     *pConnectivity = NLM_CONNECTIVITY_DISCONNECTED;
+ 
++    if (list_empty(&mgr->networks))
++    {
++        *pConnectivity = routed_connectivity();
++        return S_OK;
++    }
++
+     LIST_FOR_EACH_ENTRY( network, &mgr->networks, struct network, entry )
+     {
+         if (network->connected_to_internet)
