@@ -33,7 +33,8 @@ The lightweight build uses `tools/build/proton-ge.sh` in
 [arlinux-rootfs](https://github.com/taowen/arlinux-rootfs), a matching
 upstream-prepared GE checkout, the pinned official ARM64 archive and LLVM-MinGW.
 It rebuilds ntdll, wineserver, nsiproxy, the matching iphlpapi PE modules
-and the ntdll, kernel32, kernelbase and windows.ui PE modules for all three architectures,
+and the ntdll, kernel32, kernelbase, windows.ui, netprofm and dxcore PE modules
+for all three architectures,
 retaining the rest of the GE runtime,
 and emits the exact modified Wine source archive. The full upstream build
 instructions remain applicable.
@@ -64,6 +65,11 @@ interfaces or guaranteeing that a particular remote service is reachable.
 Short `TokenLinkedToken` queries return `ERROR_BAD_LENGTH`, matching native
 Windows. Other token information keeps its existing buffer-size semantics;
 this lets installers allocate the required linked-token buffer normally.
+DXCore reports memory sizes from Wine's existing adapter inventory and marks
+that static inventory as non-detachable. Property support reporting uses the
+same implementation as property-size queries; other unimplemented properties
+remain unsupported. This allows clients such as Intel LibXPUInfo to query the
+adapter without throwing on missing memory-property implementations.
 
 > [!Warning]
 > **Running non-Steam games with GE-Proton outside of Steam is only supported using [umu](https://github.com/Open-Wine-Components/umu-launcher):**
