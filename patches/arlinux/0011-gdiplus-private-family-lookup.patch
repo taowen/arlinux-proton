@@ -1,0 +1,24 @@
+Subject: gdiplus: Look up a collection's reported family names directly.
+
+A valid private family can have a different full face name returned by GDI.
+Do not require GDI name substitution to succeed before searching the collection.
+Keep the existing enumeration path for aliases and substituted names.
+Reference: https://bugs.winehq.org/show_bug.cgi?id=60087
+
+--- a/dlls/gdiplus/font.c
++++ b/dlls/gdiplus/font.c
+@@ -723,6 +723,14 @@
+         if (status != Ok) return status;
+     }
+ 
++    /* A collection's own family name is authoritative, including private
++     * fonts whose full face name differs from their family name. */
++    for (i = 0; i < collection->count; i++)
++    {
++        if (!wcsicmp(name, collection->FontFamilies[i]->FamilyName))
++            return GdipCloneFontFamily(collection->FontFamilies[i], family);
++    }
++
+     status = FontFamilyNotFound;
+ 
+     hdc = CreateCompatibleDC(0);

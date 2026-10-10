@@ -27,6 +27,14 @@ numeric code-page suffixes, multibyte/wide-character round trips and invalid
 locale rejection. Run ARM64, x86-64 and x86 builds in an existing prefix.
 It returns zero on success and writes `C:\ucrt-locale-result.txt`.
 
+`gdiplus-private-family.c` loads a font file supplied as its sole argument and
+looks up every reported family in the same private collection, including
+case-insensitive lookup. Missing families and invalid arguments must remain
+errors. Build with `-municode -lgdiplus`, then run in an existing prefix.
+It writes `C:\gdiplus-private-family-result.txt`; no Adobe font is bundled.
+Use a font whose full face name differs from its family name to reproduce the
+regression (Wine bug 60087).
+
 `exception-observer.c` is a bounded, read-only Windows debug-event collector.
 It launches one executable, records first-chance C++ types and exception-object
 strings, module paths and available backtraces, then detaches. It forwards
