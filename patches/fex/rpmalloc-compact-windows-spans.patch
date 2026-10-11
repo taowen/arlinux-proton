@@ -1,0 +1,18 @@
+Subject: rpmalloc: Bound per-thread reservations on Windows ARM64 hosts
+
+Wine ARM64 can run with a 39-bit user address space. A 256 MiB span plus
+alignment reserves 512 MiB for each thread's size-class heap, exhausting
+that space in applications with hundreds of threads. A 64 MiB span still
+contains the largest allocator page and does not change allocation limits.
+Keep the native Linux allocator configuration unchanged.
+
+--- a/External/rpmalloc/rpmalloc/rpmalloc.c
++++ b/External/rpmalloc/rpmalloc/rpmalloc.c
+@@ -188,1 +188,7 @@
++#if PLATFORM_WINDOWS
++/* Wine ARM64 hosts may have only 39 bits of user virtual address space.
++ * Keep one large page per span rather than reserving four per thread. */
++#define SPAN_SIZE LARGE_PAGE_SIZE
++#else
+ #define SPAN_SIZE (256 * 1024 * 1024)
++#endif
