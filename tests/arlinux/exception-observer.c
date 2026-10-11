@@ -130,11 +130,11 @@ int wmain(int argc, WCHAR **argv)
     int status = 0;
     BOOL loader_breakpoint_seen = FALSE;
     startup.cb = sizeof(startup);
-    if (argc != 3) { fprintf(stderr, "Usage: exception-observer.exe SECONDS EXECUTABLE\n"); return 2; }
+    if (argc != 3 && argc != 4) { fprintf(stderr, "Usage: exception-observer.exe SECONDS EXECUTABLE [COMMAND_LINE]\n"); return 2; }
     duration = _wtoi(argv[1])*1000;
     if (!duration || duration > 600000) return 2;
     setvbuf(stdout, NULL, _IONBF, 0);
-    if (!CreateProcessW(argv[2], NULL, NULL, NULL, FALSE, DEBUG_ONLY_THIS_PROCESS,
+    if (!CreateProcessW(argv[2], argc == 4 ? argv[3] : NULL, NULL, NULL, FALSE, DEBUG_ONLY_THIS_PROCESS,
                         NULL, NULL, &startup, &process))
     { printf("create_error=%lu\n", GetLastError()); return 3; }
     if (!DebugSetProcessKillOnExit(FALSE))
@@ -177,6 +177,11 @@ int wmain(int argc, WCHAR **argv)
                     printf("exception=%08lx first_chance=%lu tid=%lu address=%p\n",
                            exception->ExceptionCode, event.u.Exception.dwFirstChance,
                            event.dwThreadId, exception->ExceptionAddress);
+                    if (exception->ExceptionCode == EXCEPTION_ACCESS_VIOLATION &&
+                        exception->NumberParameters >= 2)
+                        printf("  access=%llu target=%llx\n",
+                               (unsigned long long)exception->ExceptionInformation[0],
+                               (unsigned long long)exception->ExceptionInformation[1]);
                     if (exception->ExceptionCode == 0xe06d7363) cpp_exception(process.hProcess, exception);
                     if (thread) { backtrace(process.hProcess, thread); CloseHandle(thread); }
                 }
