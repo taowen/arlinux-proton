@@ -1,63 +1,168 @@
-From: ARLinux contributors
-Subject: [PATCH] threadpool: implement SetThreadpoolTimerEx
+From 8fc5b439ff6a19de46c794032cf89e9d96662f25 Mon Sep 17 00:00:00 2001
+From: Nikolay Sivov <nsivov@codeweavers.com>
+Date: Fri, 4 Sep 2026 15:10:09 +0200
+Subject: [PATCH] kernel32: Add SetThreadpoolTimerEx() implementation.
 
-Reuse the existing timer queue and return whether the previous pending
-timer was canceled, under the same queue lock. Keep SetThreadpoolTimer
-as a void wrapper so both APIs share scheduling and cancellation logic.
-Creative Cloud Helper uses the extended API after signing in.
+Wine-Bug: https://bugs.winehq.org/show_bug.cgi?id=57980
+Signed-off-by: Nikolay Sivov <nsivov@codeweavers.com>
 
-diff --git a/dlls/ntdll/threadpool.c b/dlls/ntdll/threadpool.c
---- a/dlls/ntdll/threadpool.c
-+++ b/dlls/ntdll/threadpool.c
-@@ -2996,6 +2996,7 @@
--VOID WINAPI TpSetTimer( TP_TIMER *timer, LARGE_INTEGER *timeout, LONG period, LONG window_length )
-+BOOL WINAPI TpSetTimerEx( TP_TIMER *timer, LARGE_INTEGER *timeout, LONG period, LONG window_length )
- {
-     struct threadpool_object *this = impl_from_TP_TIMER( timer );
-     struct threadpool_object *other_timer;
-     BOOL submit_timer = FALSE;
-+    BOOL canceled;
-     ULONGLONG timestamp;
-@@ -3007,4 +3008,8 @@
-     RtlEnterCriticalSection( &timerqueue.cs );
- 
-     assert( this->u.timer.timer_initialized );
-+    RtlEnterCriticalSection( &this->pool->cs );
-+    canceled = this->u.timer.timer_pending && !this->num_pending_callbacks &&
-+               !this->num_running_callbacks;
-+    RtlLeaveCriticalSection( &this->pool->cs );
-     this->u.timer.timer_set = timeout != NULL;
-@@ -3067,6 +3072,12 @@
- 
-     if (submit_timer)
-        tp_object_submit( this, FALSE );
-+    return canceled;
-+}
-+
-+VOID WINAPI TpSetTimer( TP_TIMER *timer, LARGE_INTEGER *timeout, LONG period, LONG window_length )
-+{
-+    TpSetTimerEx( timer, timeout, period, window_length );
- }
- 
- /***********************************************************************
-diff --git a/dlls/ntdll/ntdll.spec b/dlls/ntdll/ntdll.spec
---- a/dlls/ntdll/ntdll.spec
-+++ b/dlls/ntdll/ntdll.spec
-@@ -1192,2 +1192,3 @@
- @ stdcall TpSetTimer(ptr ptr long long)
-+@ stdcall TpSetTimerEx(ptr ptr long long)
- @ stdcall TpSetWait(ptr long ptr)
-diff --git a/dlls/kernelbase/kernelbase.spec b/dlls/kernelbase/kernelbase.spec
---- a/dlls/kernelbase/kernelbase.spec
-+++ b/dlls/kernelbase/kernelbase.spec
-@@ -1549,2 +1549,2 @@
- @ stdcall SetThreadpoolTimer(ptr ptr long long) ntdll.TpSetTimer
--# @ stub SetThreadpoolTimerEx
-+@ stdcall SetThreadpoolTimerEx(ptr ptr long long) ntdll.TpSetTimerEx
+Backported from Wine 8fc5b439ff6a19de46c794032cf89e9d96662f25.
+Context adapted for GE's timer queue without pending_timers; implementation
+and upstream regression tests are preserved.
+
 diff --git a/dlls/kernel32/kernel32.spec b/dlls/kernel32/kernel32.spec
+index a15964bd..91acceb1 100644
 --- a/dlls/kernel32/kernel32.spec
 +++ b/dlls/kernel32/kernel32.spec
-@@ -1513,2 +1513,3 @@
+@@ -1512,6 +1512,7 @@
+ @ stdcall SetThreadpoolThreadMaximum(ptr long) NTDLL.TpSetPoolMaxThreads
+ @ stdcall SetThreadpoolThreadMinimum(ptr long) NTDLL.TpSetPoolMinThreads
  @ stdcall SetThreadpoolTimer(ptr ptr long long) NTDLL.TpSetTimer
 +@ stdcall SetThreadpoolTimerEx(ptr ptr long long) NTDLL.TpSetTimerEx
  @ stdcall SetThreadpoolWait(ptr long ptr) NTDLL.TpSetWait
+ @ stdcall -import SetTimeZoneInformation(ptr)
+ @ stub SetTimerQueueTimer
+diff --git a/dlls/kernelbase/kernelbase.spec b/dlls/kernelbase/kernelbase.spec
+index 8c1fff42..16417a41 100644
+--- a/dlls/kernelbase/kernelbase.spec
++++ b/dlls/kernelbase/kernelbase.spec
+@@ -1547,7 +1547,7 @@
+ @ stdcall SetThreadpoolThreadMaximum(ptr long) ntdll.TpSetPoolMaxThreads
+ @ stdcall SetThreadpoolThreadMinimum(ptr long) ntdll.TpSetPoolMinThreads
+ @ stdcall SetThreadpoolTimer(ptr ptr long long) ntdll.TpSetTimer
+-# @ stub SetThreadpoolTimerEx
++@ stdcall SetThreadpoolTimerEx(ptr ptr long long) ntdll.TpSetTimerEx
+ @ stdcall SetThreadpoolWait(ptr long ptr) ntdll.TpSetWait
+ # @ stub SetThreadpoolWaitEx
+ @ stdcall SetTimeZoneInformation(ptr)
+diff --git a/dlls/ntdll/ntdll.spec b/dlls/ntdll/ntdll.spec
+index b22c26be..2c66313e 100644
+--- a/dlls/ntdll/ntdll.spec
++++ b/dlls/ntdll/ntdll.spec
+@@ -1200,6 +1200,7 @@
+ @ stdcall TpSetPoolMinThreads(ptr long)
+ @ stdcall TpSetPoolStackInformation(ptr ptr)
+ @ stdcall TpSetTimer(ptr ptr long long)
++@ stdcall TpSetTimerEx(ptr ptr long long)
+ @ stdcall TpSetWait(ptr long ptr)
+ @ stdcall TpSimpleTryPost(ptr ptr ptr)
+ @ stdcall TpStartAsyncIoOperation(ptr)
+diff --git a/dlls/ntdll/tests/threadpool.c b/dlls/ntdll/tests/threadpool.c
+index 55d59d50..7218205d 100644
+--- a/dlls/ntdll/tests/threadpool.c
++++ b/dlls/ntdll/tests/threadpool.c
+@@ -50,6 +50,7 @@ static VOID     (WINAPI *pTpReleaseWork)(TP_WORK *);
+ static VOID     (WINAPI *pTpSetPoolMaxThreads)(TP_POOL *,DWORD);
+ static NTSTATUS (WINAPI *pTpSetPoolStackInformation)(TP_POOL *,TP_POOL_STACK_INFORMATION *);
+ static VOID     (WINAPI *pTpSetTimer)(TP_TIMER *,LARGE_INTEGER *,LONG,LONG);
++static BOOL     (WINAPI *pTpSetTimerEx)(TP_TIMER *,LARGE_INTEGER *,LONG,LONG);
+ static VOID     (WINAPI *pTpSetWait)(TP_WAIT *,HANDLE,LARGE_INTEGER *);
+ static NTSTATUS (WINAPI *pTpSimpleTryPost)(PTP_SIMPLE_CALLBACK,PVOID,TP_CALLBACK_ENVIRON *);
+ static void     (WINAPI *pTpStartAsyncIoOperation)(TP_IO *);
+@@ -98,6 +99,7 @@ static BOOL init_threadpool(void)
+     GET_PROC(TpSetPoolMaxThreads);
+     GET_PROC(TpSetPoolStackInformation);
+     GET_PROC(TpSetTimer);
++    GET_PROC(TpSetTimerEx);
+     GET_PROC(TpSetWait);
+     GET_PROC(TpSimpleTryPost);
+     GET_PROC(TpStartAsyncIoOperation);
+@@ -1505,6 +1507,27 @@ static void test_tp_timer(void)
+     success = pTpIsTimerSet(timer);
+     ok(!success, "TpIsTimerSet returned TRUE\n");
+     pTpWaitForTimer(timer, TRUE);
++    pTpReleaseTimer(timer);
++
++    /* TpSetTimerEx */
++    status = pTpAllocTimer(&timer, timer_cb, semaphore, &environment);
++    ok(!status, "TpAllocTimer failed with status %lx\n", status);
++    ok(!!timer, "Expected timer != NULL\n");
++
++    success = pTpIsTimerSet(timer);
++    ok(!success, "Unexpected value %d.\n", success);
++    when.QuadPart = (ULONGLONG)200 * -10000;
++    success = pTpSetTimerEx(timer, &when, 200, 0);
++    ok(!success, "Unexpected value %d.\n", success);
++    success = pTpIsTimerSet(timer);
++    ok(success, "Unexpected value %d.\n", success);
++
++    /* unset the timer */
++    success = pTpSetTimerEx(timer, NULL, 0, 0);
++    ok(success, "Unexpected value %d.\n", success);
++    success = pTpIsTimerSet(timer);
++    ok(!success, "Unexpected value %d.\n", success);
++    pTpWaitForTimer(timer, TRUE);
+ 
+     /* cleanup */
+     pTpReleaseTimer(timer);
+diff --git a/dlls/ntdll/threadpool.c b/dlls/ntdll/threadpool.c
+index 78ea19ab..b47a2677 100644
+--- a/dlls/ntdll/threadpool.c
++++ b/dlls/ntdll/threadpool.c
+@@ -3070,14 +3070,11 @@ BOOL WINAPI TpSetPoolMinThreads( TP_POOL *pool, DWORD minimum )
+     return !status;
+ }
+ 
+-/***********************************************************************
+- *           TpSetTimer    (NTDLL.@)
+- */
+-VOID WINAPI TpSetTimer( TP_TIMER *timer, LARGE_INTEGER *timeout, LONG period, LONG window_length )
++static BOOL tp_set_timer( TP_TIMER *timer, LARGE_INTEGER *timeout, LONG period, LONG window_length )
+ {
+     struct threadpool_object *this = impl_from_TP_TIMER( timer );
++    BOOL submit_timer = FALSE, was_timer_set;
+     struct threadpool_object *other_timer;
+-    BOOL submit_timer = FALSE;
+     ULONGLONG timestamp;
+ 
+     TRACE( "%p %p %lu %lu\n", timer, timeout, period, window_length );
+@@ -3086,6 +3083,8 @@ VOID WINAPI TpSetTimer( TP_TIMER *timer, LARGE_INTEGER *timeout, LONG period, LO
+     RtlEnterCriticalSection( &timerqueue.cs );
+ 
+     assert( this->u.timer.timer_initialized );
++
++    was_timer_set = this->u.timer.timer_set;
+     this->u.timer.timer_set = timeout != NULL;
+ 
+     /* Convert relative timeout to absolute timestamp and handle a timeout
+@@ -3157,6 +3156,28 @@ VOID WINAPI TpSetTimer( TP_TIMER *timer, LARGE_INTEGER *timeout, LONG period, LO
+ 
+     if (submit_timer)
+        tp_object_submit( this, FALSE );
++
++    return was_timer_set;
++}
++
++/***********************************************************************
++ *           TpSetTimer    (NTDLL.@)
++ */
++VOID WINAPI TpSetTimer( TP_TIMER *timer, LARGE_INTEGER *timeout, LONG period, LONG window_length )
++{
++    TRACE( "%p %p %lu %lu\n", timer, timeout, period, window_length );
++
++    tp_set_timer( timer, timeout, period, window_length );
++}
++
++/***********************************************************************
++ *           TpSetTimerEx    (NTDLL.@)
++ */
++BOOL WINAPI TpSetTimerEx( TP_TIMER *timer, LARGE_INTEGER *timeout, LONG period, LONG window_length )
++{
++    TRACE( "%p %p %lu %lu\n", timer, timeout, period, window_length );
++
++    return tp_set_timer( timer, timeout, period, window_length );
+ }
+ 
+ /***********************************************************************
+diff --git a/include/threadpoolapiset.h b/include/threadpoolapiset.h
+index 73203f41..0b6f1d27 100644
+--- a/include/threadpoolapiset.h
++++ b/include/threadpoolapiset.h
+@@ -56,6 +56,7 @@ WINBASEAPI BOOL        WINAPI SetThreadpoolStackInformation(PTP_POOL,PTP_POOL_ST
+ WINBASEAPI void        WINAPI SetThreadpoolThreadMaximum(PTP_POOL,DWORD);
+ WINBASEAPI BOOL        WINAPI SetThreadpoolThreadMinimum(PTP_POOL,DWORD);
+ WINBASEAPI void        WINAPI SetThreadpoolTimer(PTP_TIMER,FILETIME*,DWORD,DWORD);
++WINBASEAPI BOOL        WINAPI SetThreadpoolTimerEx(PTP_TIMER,FILETIME*,DWORD,DWORD);
+ WINBASEAPI void        WINAPI SetThreadpoolWait(PTP_WAIT,HANDLE,FILETIME *);
+ WINBASEAPI void        WINAPI StartThreadpoolIo(TP_IO*);
+ WINBASEAPI void        WINAPI SubmitThreadpoolWork(PTP_WORK);

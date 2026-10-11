@@ -1,0 +1,54 @@
+Subject: include: Generate and install existing WinRT dependency metadata
+
+--- a/include/windows.foundation.idl
++++ b/include/windows.foundation.idl
+@@ -19,2 +19,3 @@
+ #ifdef __WIDL__
++#pragma makedep header install winmd
+ #pragma winrt ns_prefix
+--- a/include/windows.foundation.collections.idl
++++ b/include/windows.foundation.collections.idl
+@@ -19,2 +19,3 @@
+ #ifdef __WIDL__
++#pragma makedep header install winmd
+ #pragma winrt ns_prefix
+--- a/include/windows.storage.streams.idl
++++ b/include/windows.storage.streams.idl
+@@ -19,2 +19,3 @@
+ #ifdef __WIDL__
++#pragma makedep header install winmd
+ #pragma winrt ns_prefix
+--- a/include/windows.storage.fileproperties.idl
++++ b/include/windows.storage.fileproperties.idl
+@@ -19,2 +19,3 @@
+ #ifdef __WIDL__
++#pragma makedep header install winmd
+ #pragma winrt ns_prefix
+--- a/include/Makefile.in
++++ b/include/Makefile.in
+@@ -1262,3 +1262,5 @@
+ 	windows.applicationmodel.winmd \
++	windows.foundation.winmd \
++	windows.foundation.collections.winmd \
+ 	windows.globalization.winmd \
+ 	windows.graphics.winmd \
+@@ -1268,3 +1270,5 @@
+ 	windows.storage.winmd \
++	windows.storage.streams.winmd \
++	windows.storage.fileproperties.winmd \
+ 	windows.system.winmd \
+ 	windows.ui.winmd \
+--- a/loader/wine.inf.in
++++ b/loader/wine.inf.in
+@@ -1335,3 +1335,5 @@
+ windows.applicationmodel.winmd
++windows.foundation.winmd
++windows.foundation.collections.winmd
+ windows.globalization.winmd
+ windows.graphics.winmd
+@@ -1341,3 +1343,5 @@
+ windows.storage.winmd
++windows.storage.streams.winmd
++windows.storage.fileproperties.winmd
+ windows.system.winmd
+ windows.ui.winmd

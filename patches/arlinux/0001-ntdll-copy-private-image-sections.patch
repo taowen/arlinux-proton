@@ -1,0 +1,24 @@
+Subject: [PATCH] ntdll: Copy private PE sections into anonymous image memory
+
+Android denies restoring execute permission on modified private file mappings.
+Mapping executable initially is insufficient: CLR temporarily makes its native
+image sections writable to apply fixups before restoring executable protection.
+
+Use the existing read-based image loading path for private PE sections. Keep
+shared mappings file-backed, and leave ordinary data mappings unchanged.
+
+diff --git a/dlls/ntdll/unix/virtual.c b/dlls/ntdll/unix/virtual.c
+--- a/dlls/ntdll/unix/virtual.c
++++ b/dlls/ntdll/unix/virtual.c
+@@ -2615,7 +2615,10 @@ static NTSTATUS map_file_into_view( struct file_view *view, int fd, size_t start, size_t size,
+ 
+     /* only try mmap if media is not removable (or if we require write access),
+        and if alignment is correct */
+-    if ((!removable || (flags & MAP_SHARED)) && host_addr == map_addr && host_size == map_size)
++    /* Private image pages may be patched and made executable again. Android
++     * rejects this for dirty file mappings; use the existing copy path. */
++    if ((!(view->protect & SEC_IMAGE) || (flags & MAP_SHARED)) &&
++        (!removable || (flags & MAP_SHARED)) && host_addr == map_addr && host_size == map_size)
+     {
+         if (mmap( host_addr, host_size, prot, flags, fd, offset ) != MAP_FAILED)
+             return STATUS_SUCCESS;

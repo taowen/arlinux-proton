@@ -1,0 +1,21 @@
+From 74272424dcccddaff0836a5826a3c379c20857ae Mon Sep 17 00:00:00 2001
+From: Jiajin Cui <cuijiajin@uniontech.com>
+Date: Thu, 22 Jan 2026 15:52:13 +0800
+Subject: [PATCH] ntdll: Prevent null pointer dereference in directory
+ scanning.
+
+Signed-off-by: Jiajin Cui <cuijiajin@uniontech.com>
+
+diff --git a/dlls/ntdll/unix/file.c b/dlls/ntdll/unix/file.c
+index 42c82531..488de37b 100644
+--- a/dlls/ntdll/unix/file.c
++++ b/dlls/ntdll/unix/file.c
+@@ -2843,7 +2843,7 @@ static unsigned int get_cached_dir_data( HANDLE handle, struct dir_data **data_r
+     }
+ 
+     *data_ret = dir_data_cache[entry];
+-    if (restart_scan) (*data_ret)->pos = 0;
++    if (restart_scan && *data_ret) (*data_ret)->pos = 0;
+     return status;
+ }
+ 

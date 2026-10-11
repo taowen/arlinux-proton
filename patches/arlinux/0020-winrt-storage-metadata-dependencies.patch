@@ -1,0 +1,42 @@
+Subject: [PATCH] include: Build and install WinRT storage metadata dependencies
+
+The StorageFile metadata refers to stream interfaces and Foundation types.
+Generate their existing IDL definitions rather than leaving managed WinRT
+projection with unresolved TypeRefs.
+
+--- a/include/windows.foundation.idl
++++ b/include/windows.foundation.idl
+@@ -19,2 +19,3 @@
+ #ifdef __WIDL__
++#pragma makedep header install winmd
+ #pragma winrt ns_prefix
+--- a/include/windows.foundation.collections.idl
++++ b/include/windows.foundation.collections.idl
+@@ -19,2 +19,3 @@
+ #ifdef __WIDL__
++#pragma makedep header install winmd
+ #pragma winrt ns_prefix
+--- a/include/windows.storage.streams.idl
++++ b/include/windows.storage.streams.idl
+@@ -19,2 +19,3 @@
+ #ifdef __WIDL__
++#pragma makedep header install winmd
+ #pragma winrt ns_prefix
+--- a/include/Makefile.in
++++ b/include/Makefile.in
+@@ -1110,1 +1110,3 @@
+ 	windows.applicationmodel.winmd \
++	windows.foundation.winmd \
++	windows.foundation.collections.winmd \
+@@ -1116,1 +1118,2 @@
+ 	windows.storage.winmd \
++	windows.storage.streams.winmd \
+--- a/loader/wine.inf.in
++++ b/loader/wine.inf.in
+@@ -1629,1 +1629,3 @@
+ windows.applicationmodel.winmd
++windows.foundation.winmd
++windows.foundation.collections.winmd
+@@ -1635,1 +1637,2 @@
+ windows.storage.winmd
++windows.storage.streams.winmd

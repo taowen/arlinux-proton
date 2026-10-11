@@ -1,0 +1,24 @@
+From 75b3d038b58127f0d5edf4b643efa8462a552d6e Mon Sep 17 00:00:00 2001
+From: Piotr Caban <piotr@codeweavers.com>
+Date: Thu, 28 May 2026 18:26:15 +0200
+Subject: [PATCH] msxml3: Don't indent endElement since it changes text node
+ content.
+
+---
+ dlls/msxml3/mxwriter.c | 3 ---
+ 1 file changed, 3 deletions(-)
+
+diff --git a/dlls/msxml3/mxwriter.c b/dlls/msxml3/mxwriter.c
+index 22841b79..d8d60e86 100644
+--- a/dlls/msxml3/mxwriter.c
++++ b/dlls/msxml3/mxwriter.c
+@@ -672,9 +672,6 @@ static inline void writer_inc_indent(mxwriter *This)
+ static inline void writer_dec_indent(mxwriter *This)
+ {
+     if (This->indent) This->indent--;
+-    /* depth is decreased only when element is closed, meaning it's not a text node
+-       at this point */
+-    This->text = FALSE;
+ }
+ 
+ static void set_element_name(mxwriter *This, const WCHAR *name, int len)

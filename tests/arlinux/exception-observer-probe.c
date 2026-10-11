@@ -6,6 +6,7 @@ static int handled;
 static struct { uintptr_t vtable, spare; char name[64]; } descriptor = {0, 0, ".?AVobserver_probe@@"};
 static uint32_t catch_type[7], catch_array[2], throw_info[4];
 static uintptr_t object[8];
+static uintptr_t pointee[8];
 static const char message[] = "observer probe: original UTF-8 message";
 static const WCHAR wide_message[] = L"observer probe: original UTF-16 message";
 static LONG CALLBACK handler(EXCEPTION_POINTERS *p)
@@ -32,10 +33,15 @@ int main(void)
     AddVectoredExceptionHandler(1, handler);
     RaiseException(0xe06d7363, 0, 4, parameters);
     RaiseException(0xe06d7363, 0, 4, parameters);
+    strcpy(descriptor.name, ".PEAVobserver_probe@@");
+    pointee[1] = 0x80070057;
+    pointee[2] = (uintptr_t)message;
+    object[0] = (uintptr_t)pointee;
+    RaiseException(0xe06d7363, 0, 4, parameters);
     result = fopen("C:\\observer-probe-result.txt", "w");
     if (!result) return 2;
     fprintf(result, "handled=%d teb_unchanged=%d status=%d\n", handled, NtCurrentTeb()==before,
-            handled==2 && NtCurrentTeb()==before ? 0 : 1);
+            handled==3 && NtCurrentTeb()==before ? 0 : 1);
     fclose(result);
-    return handled==2 && NtCurrentTeb()==before ? 0 : 1;
+    return handled==3 && NtCurrentTeb()==before ? 0 : 1;
 }

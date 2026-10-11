@@ -1,0 +1,12 @@
+Subject: ntdll: Align the protection-directory allocation to the host page size
+
+The directory contains a sentinel pointer, so its byte count need not be a
+multiple of the host page size. The mmap wrapper added in 52857120a requires
+aligned lengths. Preserve the logical entry count and round only the mapping.
+
+--- a/dlls/ntdll/unix/virtual.c
++++ b/dlls/ntdll/unix/virtual.c
+@@ -3717,1 +3717,2 @@
+-    pages_vprot = anon_mmap_alloc( pages_vprot_size * sizeof(*pages_vprot), PROT_READ | PROT_WRITE );
++    pages_vprot = anon_mmap_alloc( ROUND_SIZE( 0, pages_vprot_size * sizeof(*pages_vprot), host_page_mask ),
++                                  PROT_READ | PROT_WRITE );

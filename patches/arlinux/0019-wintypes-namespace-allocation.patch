@@ -1,0 +1,21 @@
+From 03d18c456aadd260a843677e3dd86b65627becba Mon Sep 17 00:00:00 2001
+From: Vibhav Pant <vpant@codeweavers.com>
+Date: Tue, 22 Sep 2026 17:50:05 +0530
+Subject: [PATCH] wintypes: Fix incorrect heap allocation in
+ RoResolveNamespace.
+
+Signed-off-by: Vibhav Pant <vpant@codeweavers.com>
+
+diff --git a/dlls/wintypes/main.c b/dlls/wintypes/main.c
+index e7b1ccb2..2c5d4c45 100644
+--- a/dlls/wintypes/main.c
++++ b/dlls/wintypes/main.c
+@@ -1903,7 +1903,7 @@ HRESULT WINAPI RoResolveNamespace(HSTRING name, HSTRING windowsMetaDataDir,
+                     WindowsDeleteString(paths[i]);
+                 paths_count = 0;
+             }
+-            tmp = CoTaskMemRealloc(paths, sizeof(*paths) * paths_count + 1);
++            tmp = CoTaskMemRealloc(paths, sizeof(*paths) * (paths_count + 1));
+             if (!tmp)
+             {
+                 hr = E_OUTOFMEMORY;

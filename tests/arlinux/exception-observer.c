@@ -12,6 +12,24 @@ static int read_memory(HANDLE process, uintptr_t address, void *buffer, SIZE_T s
     return address && ReadProcessMemory(process, (void *)address, buffer, size, &count) && count == size;
 }
 
+static void memory_evidence(HANDLE process, uintptr_t address)
+{
+    MEMORY_BASIC_INFORMATION memory;
+    unsigned char bytes[32];
+    unsigned i;
+    if (VirtualQueryEx(process, (void *)address, &memory, sizeof(memory)))
+        printf("  memory base=%p allocation=%p size=%llx state=%lx protect=%lx type=%lx\n",
+               memory.BaseAddress, memory.AllocationBase, (unsigned long long)memory.RegionSize,
+               memory.State, memory.Protect, memory.Type);
+    else printf("  memory_query_error=%lu\n", GetLastError());
+    if (read_memory(process, address, bytes, sizeof(bytes)))
+    {
+        printf("  bytes@%llx=", (unsigned long long)address);
+        for (i = 0; i < sizeof(bytes); ++i) printf("%02x", bytes[i]);
+        printf("\n");
+    }
+}
+
 static void print_string(HANDLE process, uintptr_t address)
 {
     char text[384];
@@ -48,6 +66,7 @@ static void cpp_exception(HANDLE process, EXCEPTION_RECORD *exception)
     uint32_t array, count, catch_type, descriptor;
     uintptr_t object, base, info;
     unsigned i;
+    int pointer_exception = 0;
     if (exception->NumberParameters != 4) return;
     object = exception->ExceptionInformation[1];
     info = exception->ExceptionInformation[2];
@@ -61,6 +80,12 @@ static void cpp_exception(HANDLE process, EXCEPTION_RECORD *exception)
         if (!read_memory(process, base+array+4+i*4, &catch_type, 4) ||
             !read_memory(process, base+catch_type+4, &descriptor, 4)) break;
         print_string(process, base+descriptor+2*sizeof(uintptr_t));
+        if (!i)
+        {
+            char prefix[4];
+            if (read_memory(process, base+descriptor+2*sizeof(uintptr_t), prefix, sizeof(prefix)))
+                pointer_exception = prefix[0] == '.' && prefix[1] == 'P' && prefix[2] == 'E' && prefix[3] == 'A';
+        }
     }
     /* Bounded raw object evidence. Never call what() inside the target. */
     for (i = 0; object && i < 8; ++i)
@@ -69,6 +94,19 @@ static void cpp_exception(HANDLE process, EXCEPTION_RECORD *exception)
         if (!read_memory(process, object+i*sizeof(pointer), &pointer, sizeof(pointer))) break;
         printf("  object[%u]=%llx\n", i, (unsigned long long)pointer);
         if (i) print_string(process, pointer);
+    }
+    /* MSVC also throws pointers (e.g. CLR's HRException*). The exception
+       storage then contains a pointer, not the object's fields. */
+    if (pointer_exception && read_memory(process, object, &object, sizeof(object)))
+    {
+        printf("  pointee=%llx\n", (unsigned long long)object);
+        for (i = 0; object && i < 8; ++i)
+        {
+            uintptr_t word;
+            if (!read_memory(process, object+i*sizeof(word), &word, sizeof(word))) break;
+            printf("  pointee[%u]=%llx\n", i, (unsigned long long)word);
+            if (i) print_string(process, word);
+        }
     }
 }
 
@@ -85,6 +123,14 @@ static void backtrace(HANDLE process, HANDLE thread)
     frame.AddrFrame.Offset = context.Fp;
     DWORD machine = IMAGE_FILE_MACHINE_ARM64;
     printf("  registers pc=%llx sp=%llx lr=%llx fp=%llx\n", context.Pc, context.Sp, context.Lr, context.Fp);
+    for (i = 0; i < 29; ++i)
+        printf("  x%u=%llx\n", i, context.X[i]);
+    memory_evidence(process, context.X0);
+    {
+        uintptr_t vtable;
+        if (read_memory(process, context.X0, &vtable, sizeof(vtable)))
+            memory_evidence(process, vtable);
+    }
 #elif defined(__x86_64__)
     frame.AddrPC.Offset = context.Rip;
     frame.AddrStack.Offset = context.Rsp;
@@ -129,6 +175,11 @@ int wmain(int argc, WCHAR **argv)
     DWORD started = GetTickCount(), duration;
     int status = 0;
     BOOL loader_breakpoint_seen = FALSE;
+    WCHAR report_path[32768];
+    DWORD report_length = GetEnvironmentVariableW(L"ARLINUX_EXCEPTION_LOG", report_path, 32768);
+    /* Proton's steam.exe launcher does not preserve console stdout. Keep the
+     * observer evidence independent of the launcher's inherited handles. */
+    if (report_length && (report_length >= 32768 || !_wfreopen(report_path, L"w", stdout))) return 5;
     startup.cb = sizeof(startup);
     if (argc != 3 && argc != 4) { fprintf(stderr, "Usage: exception-observer.exe SECONDS EXECUTABLE [COMMAND_LINE]\n"); return 2; }
     duration = _wtoi(argv[1])*1000;
@@ -179,9 +230,12 @@ int wmain(int argc, WCHAR **argv)
                            event.dwThreadId, exception->ExceptionAddress);
                     if (exception->ExceptionCode == EXCEPTION_ACCESS_VIOLATION &&
                         exception->NumberParameters >= 2)
+                    {
                         printf("  access=%llu target=%llx\n",
                                (unsigned long long)exception->ExceptionInformation[0],
                                (unsigned long long)exception->ExceptionInformation[1]);
+                        memory_evidence(process.hProcess, exception->ExceptionInformation[1]);
+                    }
                     if (exception->ExceptionCode == 0xe06d7363) cpp_exception(process.hProcess, exception);
                     if (thread) { backtrace(process.hProcess, thread); CloseHandle(thread); }
                 }
