@@ -1,0 +1,30 @@
+Subject: ntdll: Relocate dynamic images to their actual host mapping address
+
+The shared ASLR address may be outside the host's available address range.
+Using it after mapping at a different address causes a second loader relocation
+which unnecessarily makes all image sections writable and privately resident.
+
+--- a/dlls/ntdll/unix/virtual.c
++++ b/dlls/ntdll/unix/virtual.c
+@@ -3352,14 +3352,17 @@
+     /* relocate to dynamic base */
+ 
+-    if (image_info->map_addr && (delta = image_info->map_addr - image_info->base))
++    /* The server's shared ASLR address may be outside the host address space.
++     * If map_view() chose another address, relocate directly to that address;
++     * otherwise the PE loader would relocate every section a second time. */
++    if (image_info->map_addr && (delta = (ULONG_PTR)ptr - image_info->base))
+     {
+         TRACE_(module)( "relocating %s dynamic base %lx -> %lx mapped at %p\n", debugstr_us(nt_name),
+-                        (ULONG_PTR)image_info->base, (ULONG_PTR)image_info->map_addr, ptr );
++                        (ULONG_PTR)image_info->base, (ULONG_PTR)ptr, ptr );
+ 
+         if (nt->OptionalHeader.Magic == IMAGE_NT_OPTIONAL_HDR64_MAGIC)
+-            ((IMAGE_NT_HEADERS64 *)nt)->OptionalHeader.ImageBase = image_info->map_addr;
++            ((IMAGE_NT_HEADERS64 *)nt)->OptionalHeader.ImageBase = (ULONG_PTR)ptr;
+         else
+-            ((IMAGE_NT_HEADERS32 *)nt)->OptionalHeader.ImageBase = image_info->map_addr;
++            ((IMAGE_NT_HEADERS32 *)nt)->OptionalHeader.ImageBase = (ULONG_PTR)ptr;
+ 
+         if ((dir = get_data_dir( nt, total_size, IMAGE_DIRECTORY_ENTRY_BASERELOC )))
+         {
