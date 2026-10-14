@@ -10,87 +10,13 @@
 
 # GE-Proton
 
-## ARLinux ARM64 fork
+## ARLinux source usage
 
-This fork starts from **GE-Proton11-7**, retaining GE's Wine, FEX and graphics
-components. Its Android integration maps executable PE sections with execute
-permission before relocation writes, avoiding SELinux `execmod` denials.
-It does not disable SELinux or replace Steam's compatibility selection.
-Network enumeration failures are handled without dereferencing a null interface
-list or treating an empty adapter table as an allocated adapter. Android may
-deny routing-netlink access even when ordinary network connections work; these
-fixes do not fabricate interfaces or relax the host's permissions.
-The patches are in `patches/arlinux/` and are applied during Wine preparation.
-All upstream licenses, notices and attribution are retained.
-
-ARLinux releases include the ARM64 runtime archive, SHA-256 checksums and the
-exact modified Wine source archive. `arlinux-windows` installs the runtime on
-demand and uses private application prefixes, separate from Steam game data.
-This direct-launch integration is experimental and is not an upstream-supported
-alternative to umu. See the original standalone-runtime warning below.
-
-The lightweight build uses `tools/build/proton-ge.sh` in
-[arlinux-rootfs](https://github.com/taowen/arlinux-rootfs), a matching
-upstream-prepared GE checkout, the pinned official ARM64 archive and LLVM-MinGW.
-It rebuilds ntdll, wineserver, nsiproxy, the matching iphlpapi PE modules
-and the ntdll, kernel32, kernelbase, windows.ui, netprofm, dxcore and ucrtbase PE modules
-for all three architectures,
-retaining the rest of the GE runtime,
-and emits the exact modified Wine source archive. The full upstream build
-instructions remain applicable.
-
-The standalone Windows-app bundle rebuilds DXVK 2.7.1 for ARM64X, x64 and x86.
-This is its common Vulkan 1.3 baseline: DXVK 3.x's mandatory 8-bit storage feature
-is unavailable on Adreno 6xx. The bundle includes DXVK's exact source, patch
-files and source revision. DXVK initialization remains GPU-backed; no device
-features are fabricated and no software-rendering browser flags are injected.
-This does not change Steam's separately managed compatibility tools.
-The DXVK build requires LLVM-MinGW with ARM64X support (LLVM 23 or newer).
-GE's existing WebView2 sandbox compatibility entry also covers 32-bit hosts
-launching the 64-bit browser through WoW64. Chromium cannot install its Windows
-interception thunks into ARM64X Wine builtins. This Windows browser sandbox is
-not provided; Android's application sandbox remains in effect. GPU acceleration
-is not disabled and users do not need browser arguments or registry settings.
-The Wine threadpool implementation also exports `SetThreadpoolTimerEx`, sharing
-the existing timer queue and reporting cancellation under its locks. This is
-required by Creative Cloud Helper after authentication; it is not a no-op stub.
-The WinRT toast manager exposes an empty notification history that can safely
-be cleared. Toast creation and delivery remain explicitly unimplemented;
-this avoids a notification initialization crash without pretending to deliver
-system notifications.
-When the host denies adapter enumeration, the Network List Manager checks
-IPv4 and IPv6 socket routing without transmitting packets. This preserves
-Wine's existing route-based connectivity heuristic without inventing network
-interfaces or guaranteeing that a particular remote service is reachable.
-Short `TokenLinkedToken` queries return `ERROR_BAD_LENGTH`, matching native
-Windows. Other token information keeps its existing buffer-size semantics;
-this lets installers allocate the required linked-token buffer normally.
-DXCore reports memory sizes from Wine's existing adapter inventory and marks
-that static inventory as non-detachable. Property support reporting uses the
-same implementation as property-size queries; other unimplemented properties
-remain unsupported. This allows clients such as Intel LibXPUInfo to query the
-adapter without throwing on missing memory-property implementations.
-UCRT accepts locale names with code-page suffixes, such as `en-US.UTF-8`,
-using its existing locale and encoding implementations. Older Microsoft CRT
-versions retain their existing parsing rules; invalid locales still fail.
-
-> [!Warning]
-> **Running non-Steam games with GE-Proton outside of Steam is only supported using [umu](https://github.com/Open-Wine-Components/umu-launcher):**
-> 
-> Proton runs in a container, which uses a runtime environment and libraries specifically built for use within that container. Not running it as intended results in the container and therefore its runtime not being used, which severely breaks library compatibility. It causes Wine to attempt to search for libraries on your system instead of those it was built with or intended for use with Proton. It may work if enough libraries match, but it is not the expected environment and not supported due to library differences across Linux distributions.
-> 
-> If you want Proton functionality outside of Steam, umu-launcher is a command-line tool that was designed to be able to mimic Steam in running the entire containerized runtime environment it needs in order to run Proton exactly as Steam does without needing Steam. Any other method is not supported.
->
->[Heroic](https://heroicgameslauncher.com/) has also enabled umu by default when using `GE-Proton`.
->
->[Lutris](https://lutris.net/) has integrated umu as the default backend used when `GE-Proton (Latest)` is selected as a Wine runner either globally or for any specific game.
-
-> [!Note]
-> (1) Please note, this is a custom build of Proton, and is not affiliated with Valve's Proton.
-> 
-> (2) Please also note I will not assist with unofficial builds of GE-Proton. The only version of GE-Proton that I provide and will assist with builds of is the one provided within this repository, using the build system documented here.
-> 
-> (3) I cannot validate the accuracy or functionality of other builds that have not been built using the build system included here.
+ARLinux retains this source checkout for its FEX build inputs and standalone
+Windows diagnostic fixtures. Steam compatibility uses Android-hosted Bionic
+Wine registered as a custom Steam tool. ARLinux no longer ships a patched
+Steam Proton core or applies its own Wine patches through this checkout.
+Upstream licenses, notices and build instructions are retained below.
 
 ## Table of contents
 
