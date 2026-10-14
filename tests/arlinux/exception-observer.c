@@ -2,6 +2,7 @@
 #define _WIN32_WINNT 0x0601
 #include <windows.h>
 #include <dbghelp.h>
+#include <tlhelp32.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -175,6 +176,7 @@ int wmain(int argc, WCHAR **argv)
     DWORD started = GetTickCount(), duration;
     int status = 0;
     BOOL loader_breakpoint_seen = FALSE;
+    BOOL attached = FALSE;
     WCHAR report_path[32768];
     DWORD report_length = GetEnvironmentVariableW(L"ARLINUX_EXCEPTION_LOG", report_path, 32768);
     /* Proton's steam.exe launcher does not preserve console stdout. Keep the
@@ -185,7 +187,33 @@ int wmain(int argc, WCHAR **argv)
     duration = _wtoi(argv[1])*1000;
     if (!duration || duration > 600000) return 2;
     setvbuf(stdout, NULL, _IONBF, 0);
-    if (!CreateProcessW(argv[2], argc == 4 ? argv[3] : NULL, NULL, NULL, FALSE, DEBUG_ONLY_THIS_PROCESS,
+    if (!wcscmp(argv[2], L"--list"))
+    {
+        PROCESSENTRY32W entry = {0};
+        HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+        entry.dwSize = sizeof(entry);
+        if (snapshot == INVALID_HANDLE_VALUE) return 3;
+        if (Process32FirstW(snapshot, &entry)) do
+            {
+                char name[1024];
+                WideCharToMultiByte(CP_UTF8, 0, entry.szExeFile, -1, name, sizeof(name), NULL, NULL);
+                printf("pid=%lu parent=%lu name=%s\n", entry.th32ProcessID, entry.th32ParentProcessID, name);
+            }
+        while (Process32NextW(snapshot, &entry));
+        CloseHandle(snapshot);
+        return 0;
+    }
+    if (!wcscmp(argv[2], L"--attach"))
+    {
+        if (argc != 4) return 2;
+        ZeroMemory(&process, sizeof(process));
+        process.dwProcessId = wcstoul(argv[3], NULL, 10);
+        process.hProcess = OpenProcess(PROCESS_ALL_ACCESS, FALSE, process.dwProcessId);
+        if (!process.hProcess || !DebugActiveProcess(process.dwProcessId))
+        { printf("attach_error=%lu\n", GetLastError()); return 3; }
+        attached = TRUE;
+    }
+    else if (!CreateProcessW(argv[2], argc == 4 ? argv[3] : NULL, NULL, NULL, FALSE, DEBUG_ONLY_THIS_PROCESS,
                         NULL, NULL, &startup, &process))
     { printf("create_error=%lu\n", GetLastError()); return 3; }
     if (!DebugSetProcessKillOnExit(FALSE))
@@ -222,7 +250,8 @@ int wmain(int argc, WCHAR **argv)
             {
                 disposition = DBG_EXCEPTION_NOT_HANDLED;
                 if (exception->ExceptionCode == 0xe06d7363 || !event.u.Exception.dwFirstChance ||
-                    exception->ExceptionCode == EXCEPTION_ACCESS_VIOLATION)
+                    exception->ExceptionCode == EXCEPTION_ACCESS_VIOLATION ||
+                    exception->ExceptionCode == EXCEPTION_BREAKPOINT)
                 {
                     HANDLE thread = OpenThread(THREAD_GET_CONTEXT | THREAD_QUERY_INFORMATION, FALSE, event.dwThreadId);
                     printf("exception=%08lx first_chance=%lu tid=%lu address=%p\n",
@@ -276,7 +305,7 @@ int wmain(int argc, WCHAR **argv)
         printf("detach=%d\n", detached);
         if (!detached) { printf("detach_error=%lu\n", GetLastError()); status = 4; }
     }
-    CloseHandle(process.hThread);
+    if (!attached) CloseHandle(process.hThread);
     CloseHandle(process.hProcess);
     return status;
 }
