@@ -1,11 +1,48 @@
 /* Read-only first-chance exception observer. No context writes or injection. */
 #define _WIN32_WINNT 0x0601
 #include <windows.h>
+#include <winternl.h>
 #include <dbghelp.h>
 #include <tlhelp32.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+
+/* Read command lines through the target PEB. Both observed architectures
+ * have 64-bit pointers; never assume ProcessCommandLineInformation is present. */
+static void print_command_line(DWORD pid)
+{
+    typedef LONG (WINAPI *query_fn)(HANDLE, ULONG, void *, ULONG, ULONG *);
+    query_fn query = (query_fn)(void *)GetProcAddress(GetModuleHandleW(L"ntdll.dll"), "NtQueryInformationProcess");
+    HANDLE process = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, FALSE, pid);
+    PROCESS_BASIC_INFORMATION basic;
+    PEB peb;
+    RTL_USER_PROCESS_PARAMETERS parameters;
+    WCHAR *wide = NULL;
+    char *utf8 = NULL;
+    SIZE_T read;
+    int count;
+    if (!query || !process) { if (process) CloseHandle(process); return; }
+    if (query(process, 0, &basic, sizeof(basic), NULL) < 0 ||
+        !ReadProcessMemory(process, basic.PebBaseAddress, &peb, sizeof(peb), &read) || read != sizeof(peb) ||
+        !ReadProcessMemory(process, peb.ProcessParameters, &parameters, sizeof(parameters), &read) || read != sizeof(parameters)) goto done;
+    if (!parameters.CommandLine.Length || parameters.CommandLine.Length % sizeof(WCHAR)) goto done;
+    wide = malloc(parameters.CommandLine.Length);
+    if (!wide || !ReadProcessMemory(process, parameters.CommandLine.Buffer, wide, parameters.CommandLine.Length, &read) ||
+        read != parameters.CommandLine.Length) goto done;
+    count = WideCharToMultiByte(CP_UTF8, 0, wide, parameters.CommandLine.Length / sizeof(WCHAR), NULL, 0, NULL, NULL);
+    utf8 = count > 0 ? malloc(count + 1) : NULL;
+    if (utf8)
+    {
+        WideCharToMultiByte(CP_UTF8, 0, wide, parameters.CommandLine.Length / sizeof(WCHAR), utf8, count, NULL, NULL);
+        utf8[count] = 0;
+        printf("command_line pid=%lu %s\n", pid, utf8);
+    }
+done:
+    free(wide);
+    free(utf8);
+    CloseHandle(process);
+}
 
 static int read_memory(HANDLE process, uintptr_t address, void *buffer, SIZE_T size)
 {
@@ -254,6 +291,7 @@ int wmain(int argc, WCHAR **argv)
                 char name[1024];
                 WideCharToMultiByte(CP_UTF8, 0, entry.szExeFile, -1, name, sizeof(name), NULL, NULL);
                 printf("pid=%lu parent=%lu name=%s\n", entry.th32ProcessID, entry.th32ParentProcessID, name);
+                print_command_line(entry.th32ProcessID);
             }
         while (Process32NextW(snapshot, &entry));
         CloseHandle(snapshot);
