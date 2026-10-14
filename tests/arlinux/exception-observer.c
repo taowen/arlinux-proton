@@ -67,7 +67,7 @@ static void cpp_exception(HANDLE process, EXCEPTION_RECORD *exception)
     uint32_t array, count, catch_type, descriptor;
     uintptr_t object, base, info;
     unsigned i;
-    int pointer_exception = 0;
+    int pointer_exception = 0, rust_panic = 0;
     if (exception->NumberParameters != 4) return;
     object = exception->ExceptionInformation[1];
     info = exception->ExceptionInformation[2];
@@ -86,6 +86,11 @@ static void cpp_exception(HANDLE process, EXCEPTION_RECORD *exception)
             char prefix[4];
             if (read_memory(process, base+descriptor+2*sizeof(uintptr_t), prefix, sizeof(prefix)))
                 pointer_exception = prefix[0] == '.' && prefix[1] == 'P' && prefix[2] == 'E' && prefix[3] == 'A';
+            {
+                char name[11];
+                if (read_memory(process, base+descriptor+2*sizeof(uintptr_t), name, sizeof(name)))
+                    rust_panic = !memcmp(name, "rust_panic", sizeof(name));
+            }
         }
     }
     /* Bounded raw object evidence. Never call what() inside the target. */
@@ -95,6 +100,31 @@ static void cpp_exception(HANDLE process, EXCEPTION_RECORD *exception)
         if (!read_memory(process, object+i*sizeof(pointer), &pointer, sizeof(pointer))) break;
         printf("  object[%u]=%llx\n", i, (unsigned long long)pointer);
         if (i) print_string(process, pointer);
+    }
+    /* Rust panic_unwind stores a boxed Any payload. Keep bounded raw words:
+     * layouts vary across Rust versions, so these are not a decoded message. */
+    if (rust_panic)
+    {
+        uintptr_t payload;
+        if (read_memory(process, object+sizeof(uintptr_t), &payload, sizeof(payload)))
+        {
+            printf("  rust_payload=%llx\n", (unsigned long long)payload);
+            for (i = 0; payload && i < 8; ++i)
+            {
+                uintptr_t word;
+                unsigned j;
+                if (!read_memory(process, payload+i*sizeof(word), &word, sizeof(word))) break;
+                printf("  rust_payload[%u]=%llx\n", i, (unsigned long long)word);
+                print_string(process, word);
+                for (j = 0; word && j < 4; ++j)
+                {
+                    uintptr_t child;
+                    if (!read_memory(process, word+j*sizeof(child), &child, sizeof(child))) break;
+                    printf("  rust_payload[%u][%u]=%llx\n", i, j, (unsigned long long)child);
+                    print_string(process, child);
+                }
+            }
+        }
     }
     /* MSVC also throws pointers (e.g. CLR's HRException*). The exception
        storage then contains a pointer, not the object's fields. */
