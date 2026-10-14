@@ -168,6 +168,30 @@ static void backtrace(HANDLE process, HANDLE thread)
     }
 }
 
+/* The initial attach breakpoint stops all target threads. Read contexts there
+ * without injecting a thread, changing registers, or suspending threads twice. */
+static void snapshot_threads(HANDLE process, DWORD pid)
+{
+    THREADENTRY32 entry = {0};
+    HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0);
+    unsigned count = 0;
+    entry.dwSize = sizeof(entry);
+    if (snapshot == INVALID_HANDLE_VALUE)
+    { printf("thread_snapshot_error=%lu\n", GetLastError()); return; }
+    if (Thread32First(snapshot, &entry)) do
+    {
+        HANDLE thread;
+        if (entry.th32OwnerProcessID != pid) continue;
+        if (++count > 256) { printf("thread_snapshot_limit=256\n"); break; }
+        thread = OpenThread(THREAD_GET_CONTEXT | THREAD_QUERY_INFORMATION, FALSE, entry.th32ThreadID);
+        printf("snapshot_thread=%lu\n", entry.th32ThreadID);
+        if (thread) { backtrace(process, thread); CloseHandle(thread); }
+        else printf("thread_open_error=%lu\n", GetLastError());
+    }
+    while (Thread32Next(snapshot, &entry));
+    CloseHandle(snapshot);
+}
+
 int wmain(int argc, WCHAR **argv)
 {
     STARTUPINFOW startup = {0};
@@ -177,6 +201,8 @@ int wmain(int argc, WCHAR **argv)
     int status = 0;
     BOOL loader_breakpoint_seen = FALSE;
     BOOL attached = FALSE;
+    BOOL snapshot = argc >= 3 && !wcscmp(argv[2], L"--snapshot");
+    BOOL snapshot_done = FALSE;
     WCHAR report_path[32768];
     DWORD report_length = GetEnvironmentVariableW(L"ARLINUX_EXCEPTION_LOG", report_path, 32768);
     /* Proton's steam.exe launcher does not preserve console stdout. Keep the
@@ -203,14 +229,15 @@ int wmain(int argc, WCHAR **argv)
         CloseHandle(snapshot);
         return 0;
     }
-    if (!wcscmp(argv[2], L"--attach"))
+    if (snapshot || !wcscmp(argv[2], L"--attach"))
     {
         if (argc != 4) return 2;
         ZeroMemory(&process, sizeof(process));
         process.dwProcessId = wcstoul(argv[3], NULL, 10);
         process.hProcess = OpenProcess(PROCESS_ALL_ACCESS, FALSE, process.dwProcessId);
         if (!process.hProcess || !DebugActiveProcess(process.dwProcessId))
-        { printf("attach_error=%lu\n", GetLastError()); return 3; }
+        { printf("attach_error=%lu\n", GetLastError());
+          if (process.hProcess) CloseHandle(process.hProcess); return 3; }
         attached = TRUE;
     }
     else if (!CreateProcessW(argv[2], argc == 4 ? argv[3] : NULL, NULL, NULL, FALSE, DEBUG_ONLY_THIS_PROCESS,
@@ -220,7 +247,7 @@ int wmain(int argc, WCHAR **argv)
     {
         printf("kill_on_exit_error=%lu\n", GetLastError());
         DebugActiveProcessStop(process.dwProcessId);
-        CloseHandle(process.hThread);
+        if (!attached) CloseHandle(process.hThread);
         CloseHandle(process.hProcess);
         return 4;
     }
@@ -245,7 +272,14 @@ int wmain(int argc, WCHAR **argv)
             /* The loader breakpoint belongs to the debugger. Other exceptions
              * must reach the application's own exception handlers unchanged. */
             if (exception->ExceptionCode == EXCEPTION_BREAKPOINT && !loader_breakpoint_seen)
+            {
                 loader_breakpoint_seen = TRUE;
+                if (snapshot)
+                {
+                    snapshot_threads(process.hProcess, process.dwProcessId);
+                    snapshot_done = TRUE;
+                }
+            }
             else
             {
                 disposition = DBG_EXCEPTION_NOT_HANDLED;
@@ -297,6 +331,7 @@ int wmain(int argc, WCHAR **argv)
         }
         if (!ContinueDebugEvent(event.dwProcessId, event.dwThreadId, disposition))
         { printf("continue_error=%lu\n", GetLastError()); status = 4; break; }
+        if (snapshot_done) break;
     }
     SymCleanup(process.hProcess);
     if (WaitForSingleObject(process.hProcess, 0) == WAIT_TIMEOUT)
